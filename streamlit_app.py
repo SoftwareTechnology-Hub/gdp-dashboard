@@ -249,7 +249,7 @@ with st.sidebar:
     if st.button("🗑️ Clear Beaker & Selection", use_container_width=True, type="primary"):
         st.session_state.selected_chemicals = {}
         st.session_state.log.append(f"✅ Selection and Beaker cleared.")
-        st.rerun()
+        st.experimental_rerun()
 
 
 # --- Main Layout ---
