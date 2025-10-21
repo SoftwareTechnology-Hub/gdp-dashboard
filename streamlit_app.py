@@ -363,8 +363,9 @@ with col2:
     st.subheader("Activity Log")
     log_content = "\n".join(st.session_state.log)
     
-    # FIX APPLIED: Correctly replacing the newline character inside the f-string.
-    st.markdown(f'<div class="log-box">{log_content.replace("\n", "<br>")}</div>', unsafe_allow_html=True)
+    # FIX: Pre-process the content to move the .replace() outside the f-string expression
+    html_log_content = log_content.replace("\n", "<br>")
+    st.markdown(f'<div class="log-box">{html_log_content}</div>', unsafe_allow_html=True)
 
 
     st.markdown("---")
