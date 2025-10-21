@@ -2,9 +2,103 @@ import streamlit as st
 import time
 from datetime import datetime
 
-st.set_page_config(page_title="Virtual Chemical Lab", layout="wide")
+# --- Page Configuration ---
+# Use a darker theme and a simple icon
+st.set_page_config(
+    page_title="Virtual Chemical Lab", 
+    layout="wide", 
+    initial_sidebar_state="expanded",
+    page_icon="🧪"
+)
 
-# --- Chemical Data ---
+# --- CSS Styling for a modern, lab-like look ---
+st.markdown("""
+<style>
+/* Main container background */
+.main {
+    background-color: #f0f2f6; /* Light gray background */
+}
+/* Header style */
+.stApp header {
+    background-color: #007bff; /* Primary blue color for header */
+    color: white;
+}
+/* Subheader style */
+h2, h3 {
+    color: #007bff; /* Blue text for headings */
+    border-bottom: 2px solid #007bff20; /* Subtle underline */
+    padding-bottom: 5px;
+    margin-top: 15px;
+}
+/* Sidebar style */
+[data-testid="stSidebar"] {
+    background-color: #ffffff; /* White sidebar */
+    box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+}
+/* Button style */
+.stButton>button {
+    width: 100%;
+    border-radius: 5px;
+    margin-top: 5px;
+    transition: background-color 0.3s;
+}
+.stButton>button:hover {
+    background-color: #0056b3;
+    color: white;
+    border-color: #0056b3;
+}
+/* Beaker styling */
+.beaker-container {
+    display: flex;
+    justify-content: center;
+    align-items: flex-end; /* Align to the bottom of the container */
+    height: 300px; /* Increased height for better visibility */
+    width: 100%;
+    margin-top: 20px;
+    background-color: #ffffff; /* White background for the beaker area */
+    border-radius: 10px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+}
+.beaker-glass {
+    width: 150px; /* Increased size */
+    height: 250px; /* Increased size */
+    border: 5px solid #333;
+    border-radius: 0 0 10px 10px;
+    background: #ffffff50; /* Semi-transparent white for glass effect */
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 25px; /* Space from the bottom of its container */
+}
+.beaker-liquid {
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    transition: height 0.5s ease-out; /* Smooth liquid animation */
+    border-radius: 0 0 5px 5px;
+    box-shadow: inset 0 0 10px rgba(0,0,0,0.5); /* Inner shadow for depth */
+}
+/* Log/Output styling */
+.log-box {
+    background-color: #e9ecef; /* Light gray background for log */
+    padding: 10px;
+    border-radius: 5px;
+    height: 300px; /* Fixed height for log area */
+    overflow-y: scroll; /* Scrollable log */
+    font-family: monospace;
+    font-size: 14px;
+}
+.stText {
+    margin: 0;
+    padding: 0;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+st.title("🧪 Virtual Chemistry Lab Simulator")
+st.markdown("---")
+
+# --- Chemical Data (kept as is) ---
 CHEMICAL_DATA = {
     "Water (H2O)": {"mm": 18.02, "type": "Solvent", "conc": 55.5, "state": "L", "color": "#1E90FF"},
     "Sodium chloride (table salt)": {"mm": 58.44, "type": "Ionic Solid", "conc": 0, "state": "S", "color": "#F0F8FF"},
@@ -23,13 +117,13 @@ CHEMICAL_DATA = {
 
 SAFE_CHEMICALS = list(CHEMICAL_DATA.keys())
 
-# --- Session State ---
+# --- Session State (kept as is) ---
 if 'selected_chemicals' not in st.session_state:
     st.session_state.selected_chemicals = {}
 if 'log' not in st.session_state:
     st.session_state.log = []
 
-# --- Helper Functions ---
+# --- Helper Functions (kept as is) ---
 def standardize_amount(chemical, amount, unit):
     data = CHEMICAL_DATA[chemical]
     if unit == 'ml':
@@ -37,7 +131,7 @@ def standardize_amount(chemical, amount, unit):
     else:
         volume_l = amount
     if data['state'] == 'S':
-        mass_g = amount * 2.0
+        mass_g = amount * 2.0 # Placeholder for mass calculation
         moles = mass_g / data['mm']
     else:
         moles = data['conc'] * volume_l
@@ -52,82 +146,218 @@ def calculate_reaction(selected):
 
     acid_moles = sum(c['moles'] for c in acids.values()) if acids else 0
     base_moles = sum(c['moles'] for c in bases.values()) if bases else 0
+    
+    reaction_happened = False
+    
     if acid_moles and base_moles:
-        desc.append(f"Neutralization reaction! {min(acid_moles, base_moles):.3f} moles reacted.")
+        min_moles = min(acid_moles, base_moles)
+        desc.append(f"**Neutralization!** Salt and water formed. Reacted: $\\approx {min_moles:.3f}$ mol")
+        reaction_happened = True
 
     if acids and carbonates:
         co2_moles = min(acid_moles, sum(c['moles'] for c in carbonates.values()))
         if co2_moles > 0:
-            desc.append(f"CO2 gas evolved: {co2_moles:.3f} moles.")
+            desc.append(f"**Gas Evolution!** $\\text{CO}_2$ gas bubbled off: $\\approx {co2_moles:.3f}$ mol")
+            reaction_happened = True
 
     if 'Water (H2O)' in selected and solids:
         for s in solids:
-            desc.append(f"{s} dissolved in water (~{selected[s]['moles']:.3f} mol).")
+            desc.append(f"**Dissolving!** {s} dissolved in water ($\\approx {selected[s]['moles']:.3f}$ mol)")
+            reaction_happened = True
+    
+    if 'Copper sulfate (dilute)' in selected and bases:
+        desc.append("**Precipitation!** Blue copper hydroxide solid formed.")
+        reaction_happened = True
 
     if not desc:
         if len(selected)==1:
             desc.append("Single chemical selected. No reaction.")
         else:
-            desc.append("No known reaction. Likely a simple mixture.")
-    return ' '.join(desc)
+            desc.append("No known reaction. Likely a simple mixture or dissolution.")
+            
+    if reaction_happened:
+        return "<span style='color:red; font-weight:bold;'>REACTION OCCURRED!</span> " + ' | '.join(desc)
+    else:
+        return ' | '.join(desc)
 
 def mix_colors(colors):
+    # Simple color averaging for a mixture effect
     r = sum(int(c[1:3],16) for c in colors)//len(colors)
     g = sum(int(c[3:5],16) for c in colors)//len(colors)
     b = sum(int(c[5:7],16) for c in colors)//len(colors)
     return f'#{r:02x}{g:02x}{b:02x}'
 
-# --- Layout ---
-left, center, right = st.columns([2,1,2])
 
-# --- Left Panel: Chemical Selection ---
-with left:
-    st.subheader("Available Chemicals")
-    for chem in SAFE_CHEMICALS:
-        amt = st.number_input(f"{chem} amount", min_value=0.0, value=10.0, step=1.0, key=f"{chem}_amt")
-        unit = st.selectbox(f"Unit for {chem}", ["ml","l"], key=f"{chem}_unit")
-        add = st.button(f"Add {chem}", key=f"{chem}_add")
-        if add:
-            moles = standardize_amount(chem, amt, unit)
-            st.session_state.selected_chemicals[chem] = {'amount': amt, 'unit': unit, 'moles': moles, 'type': CHEMICAL_DATA[chem]['type'], 'color': CHEMICAL_DATA[chem]['color'], 'state': CHEMICAL_DATA[chem]['state']}
-            st.session_state.log.append(f"{datetime.now().strftime('%H:%M:%S')} - {chem} added (~{moles:.3f} mol)")
+# --- Sidebar: Chemical Selection (Cleaned up) ---
+with st.sidebar:
+    st.header("🧪 Chemical Inventory")
+    st.markdown("Use the controls below to **add chemicals** to your virtual beaker.")
     
-    if st.button("Clear Selection"):
+    # Use a dictionary to store temporary input values
+    temp_inputs = {}
+
+    for chem in SAFE_CHEMICALS:
+        expander = st.expander(f"**{chem}**", expanded=False)
+        with expander:
+            # Display chemical info
+            data = CHEMICAL_DATA[chem]
+            st.markdown(f"**Type:** {data['type']} | **MM:** {data['mm']} g/mol")
+            
+            col_amt, col_unit = st.columns([2, 1])
+            with col_amt:
+                amt = st.number_input(
+                    "Amount", 
+                    min_value=0.0, 
+                    value=10.0, 
+                    step=1.0, 
+                    key=f"{chem}_amt",
+                    label_visibility="collapsed"
+                )
+            with col_unit:
+                unit = st.selectbox(
+                    "Unit", 
+                    ["ml", "l"] if data['state'] == 'L' else ["g"], 
+                    key=f"{chem}_unit",
+                    label_visibility="collapsed"
+                )
+            
+            if st.button(f"Add **{chem}** to Beaker", key=f"{chem}_add", use_container_width=True):
+                moles = standardize_amount(chem, amt, unit)
+                st.session_state.selected_chemicals[chem] = {
+                    'amount': amt, 
+                    'unit': unit, 
+                    'moles': moles, 
+                    'type': data['type'], 
+                    'color': data['color'], 
+                    'state': data['state']
+                }
+                st.session_state.log.append(f"💧 Added {amt} {unit} of {chem} (≈{moles:.3f} mol)")
+                st.sidebar.success(f"Added {chem}!")
+
+
+    st.markdown("---")
+    if st.button("🗑️ Clear Beaker & Selection", use_container_width=True, type="primary"):
         st.session_state.selected_chemicals = {}
-        st.session_state.log.append(f"{datetime.now().strftime('%H:%M:%S')} - Selection cleared")
+        st.session_state.log.append(f"✅ Selection and Beaker cleared.")
+        st.experimental_rerun()
 
-# --- Center Panel: Beaker ---
-with center:
-    st.subheader("Beaker Simulation")
-    beaker = st.empty()
+
+# --- Main Layout ---
+# Use a single, wider column for the main content
+col1, col2 = st.columns([1, 1])
+
+# --- Column 1: Beaker Simulation & Reaction Trigger ---
+with col1:
+    st.header("🔬 Virtual Beaker")
+
+    # Display Beaker Simulation
+    beaker_html = ""
+    total_volume_ml = sum(c['amount'] for c in st.session_state.selected_chemicals.values() if c['state'] == 'L')
+    total_solid_g = sum(c['amount'] for c in st.session_state.selected_chemicals.values() if c['state'] == 'S')
+    
+    # Max safe volume for visualization (e.g., 200 ml)
+    max_volume_viz = 200.0
+    
     if st.session_state.selected_chemicals:
+        liquid_level_ml = total_volume_ml
+        
+        # Calculate liquid height percentage (max 100% for 250px high beaker)
+        liquid_height_percent = min((liquid_level_ml / max_volume_viz) * 100, 100)
+        
+        # Mix colors and set a minimum height for visibility
         color = mix_colors([c['color'] for c in st.session_state.selected_chemicals.values()])
-        level = min(sum(c['amount'] for c in st.session_state.selected_chemicals.values()), 100)
-        beaker.markdown(f'''
-        <div style="width:100px; height:200px; border:2px solid #333; border-radius:5px; background:#fff; position:relative;">
-            <div style="position:absolute; bottom:0; width:100%; height:{level*2}px; background:{color};"></div>
+        
+        if liquid_level_ml == 0 and total_solid_g > 0:
+            # If only solids, show a small pile at the bottom
+            liquid_height_percent = 5
+            color = mix_colors([c['color'] for c in st.session_state.selected_chemicals.values()])
+        elif liquid_level_ml > 0:
+            # Ensure a minimum height if liquid is present
+            liquid_height_percent = max(liquid_height_percent, 10)
+        else:
+            liquid_height_percent = 0
+            
+        
+        beaker_html = f'''
+        <div class="beaker-container">
+            <div class="beaker-glass">
+                <div class="beaker-liquid" style="height:{liquid_height_percent}%; background:{color};"></div>
+            </div>
         </div>
-        ''', unsafe_allow_html=True)
-    else:
-        beaker.markdown("<div style='width:100px;height:200px;border:2px solid #333;border-radius:5px;'></div>", unsafe_allow_html=True)
+        '''
+        st.markdown(beaker_html, unsafe_allow_html=True)
+        
+        st.markdown(f"**Total Volume/Mass:** {total_volume_ml:.2f} mL (Liquid) | {total_solid_g:.2f} g (Solid)")
 
-# --- Right Panel: Reaction Output ---
-with right:
-    st.subheader("Reaction Output")
-    if st.button("Mix Selected Chemicals"):
+    else:
+        st.markdown("""
+        <div class="beaker-container">
+            <div class="beaker-glass"></div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.markdown("**Status:** Empty Beaker. Add chemicals from the sidebar.")
+
+
+    st.markdown("---")
+    
+    if st.button("▶️ **START REACTION (Mix)**", use_container_width=True, type="primary"):
         if not st.session_state.selected_chemicals:
             st.warning("Select chemicals first!")
         else:
-            reaction = calculate_reaction(st.session_state.selected_chemicals)
-            st.session_state.log.append(f"{datetime.now().strftime('%H:%M:%S')} - Reaction: {reaction}")
+            # Simulation of mixing time
+            with st.spinner('Mixing chemicals and calculating reaction...'):
+                time.sleep(1) # Simulate a small delay
+                reaction = calculate_reaction(st.session_state.selected_chemicals)
+                st.session_state.log.append(f"💥 Reaction: {reaction}")
+                st.success("Reaction analysis complete!")
     
-    st.markdown("### Log / Output")
-    for entry in st.session_state.log:
-        st.text(entry)
+    st.markdown("---")
 
-    st.markdown("### Safety Guidelines")
+    st.subheader("Selected Chemicals")
+    if st.session_state.selected_chemicals:
+        st.dataframe(
+            [
+                {
+                    "Chemical": name,
+                    "Amount": f"{data['amount']} {data['unit']}",
+                    "Type": data['type'],
+                    "Moles (approx)": f"{data['moles']:.3f}"
+                }
+                for name, data in st.session_state.selected_chemicals.items()
+            ],
+            hide_index=True,
+            use_container_width=True
+        )
+    else:
+        st.info("No chemicals selected yet.")
+
+
+# --- Column 2: Log and Reaction Details ---
+with col2:
+    st.header("📊 Reaction Log & Safety")
+    
+    # Reaction Output (placed above the log)
+    st.subheader("Reaction Output")
+    if st.session_state.log and "Reaction: " in st.session_state.log[-1]:
+        output = st.session_state.log[-1].split("Reaction: ")[1]
+        st.markdown(f"### **Final Observation:**")
+        st.markdown(output, unsafe_allow_html=True)
+    else:
+        st.markdown("Awaiting first reaction...")
+
+    st.markdown("---")
+    
+    # Log Box
+    st.subheader("Activity Log")
+    log_content = "\n".join(st.session_state.log)
+    st.markdown(f'<div class="log-box">{log_content.replace("\\n", "<br>")}</div>', unsafe_allow_html=True)
+
+
+    st.markdown("---")
+    st.subheader("Safety Guidelines")
     st.info(
-        "- Educational simulator only; do NOT try real reactions.\n"
-        "- Hazardous reactions are blocked.\n"
-        "- Reactions, color changes, and volumes are simulated."
+        "**⚠️ IMPORTANT:**\n"
+        "- This is an **educational simulator only**. Do NOT attempt any of these reactions in a real-world setting.\n"
+        "- The simulator is simplified. **Hazardous reactions are generally blocked**.\n"
+        "- **Reactions, color changes, and volumes are approximations** for learning purposes."
     )
