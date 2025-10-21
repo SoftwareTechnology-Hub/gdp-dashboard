@@ -23,9 +23,11 @@ CHEMICAL_DATA = {
 
 SAFE_CHEMICALS = list(CHEMICAL_DATA.keys())
 
-# --- Initialize session_state ---
+# --- Session State ---
 if 'selected_chemicals' not in st.session_state:
     st.session_state.selected_chemicals = {}
+if 'log' not in st.session_state:
+    st.session_state.log = []
 
 # --- Helper Functions ---
 def standardize_amount(chemical, amount, unit):
@@ -41,25 +43,33 @@ def standardize_amount(chemical, amount, unit):
         moles = data['conc'] * volume_l
     return moles
 
-def calculate_reaction(selected_chemicals):
-    desc_list = []
-    acids = {c: chem for c, chem in selected_chemicals.items() if 'Acid' in chem['type']}
-    bases = {c: chem for c, chem in selected_chemicals.items() if 'Base' in chem['type']}
-    acid_moles = sum(chem['moles'] for chem in acids.values()) if acids else 0
-    base_moles = sum(chem['moles'] for chem in bases.values()) if bases else 0
+def calculate_reaction(selected):
+    desc = []
+    acids = {c: chem for c, chem in selected.items() if 'Acid' in chem['type']}
+    bases = {c: chem for c, chem in selected.items() if 'Base' in chem['type']}
+    carbonates = {c: chem for c, chem in selected.items() if 'Carbonate' in chem['type']}
+    solids = {c: chem for c, chem in selected.items() if chem['state']=='S' and 'Acid' not in chem['type'] and 'Base' not in chem['type']}
+
+    acid_moles = sum(c['moles'] for c in acids.values()) if acids else 0
+    base_moles = sum(c['moles'] for c in bases.values()) if bases else 0
     if acid_moles and base_moles:
-        desc_list.append(f"Neutralization reaction! {min(acid_moles, base_moles):.3f} moles reacted.")
-    carbonates = {c: chem for c, chem in selected_chemicals.items() if 'Carbonate' in chem['type']}
+        desc.append(f"Neutralization reaction! {min(acid_moles, base_moles):.3f} moles reacted.")
+
     if acids and carbonates:
-        co2_moles = min(acid_moles, sum(chem['moles'] for chem in carbonates.values()))
+        co2_moles = min(acid_moles, sum(c['moles'] for c in carbonates.values()))
         if co2_moles > 0:
-            desc_list.append(f"CO2 gas evolved: {co2_moles:.3f} moles.")
-    if not desc_list:
-        if len(selected_chemicals) == 1:
-            desc_list.append("Single chemical selected. No reaction.")
+            desc.append(f"CO2 gas evolved: {co2_moles:.3f} moles.")
+
+    if 'Water (H2O)' in selected and solids:
+        for s in solids:
+            desc.append(f"{s} dissolved in water (~{selected[s]['moles']:.3f} mol).")
+
+    if not desc:
+        if len(selected)==1:
+            desc.append("Single chemical selected. No reaction.")
         else:
-            desc_list.append("No known reaction. Simple mixture likely.")
-    return ' '.join(desc_list)
+            desc.append("No known reaction. Likely a simple mixture.")
+    return ' '.join(desc)
 
 def mix_colors(colors):
     r = sum(int(c[1:3],16) for c in colors)//len(colors)
@@ -79,46 +89,45 @@ with left:
         add = st.button(f"Add {chem}", key=f"{chem}_add")
         if add:
             moles = standardize_amount(chem, amt, unit)
-            st.session_state.selected_chemicals[chem] = {'amount': amt, 'unit': unit, 'moles': moles, 'type': CHEMICAL_DATA[chem]['type'], 'color': CHEMICAL_DATA[chem]['color']}
-            st.success(f"{chem} added (~{moles:.3f} mol)")
-
+            st.session_state.selected_chemicals[chem] = {'amount': amt, 'unit': unit, 'moles': moles, 'type': CHEMICAL_DATA[chem]['type'], 'color': CHEMICAL_DATA[chem]['color'], 'state': CHEMICAL_DATA[chem]['state']}
+            st.session_state.log.append(f"{datetime.now().strftime('%H:%M:%S')} - {chem} added (~{moles:.3f} mol)")
+    
     if st.button("Clear Selection"):
         st.session_state.selected_chemicals = {}
-        st.success("Selection cleared!")
+        st.session_state.log.append(f"{datetime.now().strftime('%H:%M:%S')} - Selection cleared")
 
-# --- Center Panel: Beaker Visualization ---
+# --- Center Panel: Beaker ---
 with center:
     st.subheader("Beaker Simulation")
-    beaker_placeholder = st.empty()
+    beaker = st.empty()
     if st.session_state.selected_chemicals:
         color = mix_colors([c['color'] for c in st.session_state.selected_chemicals.values()])
         level = min(sum(c['amount'] for c in st.session_state.selected_chemicals.values()), 100)
-        beaker_html = f'''
+        beaker.markdown(f'''
         <div style="width:100px; height:200px; border:2px solid #333; border-radius:5px; background:#fff; position:relative;">
             <div style="position:absolute; bottom:0; width:100%; height:{level*2}px; background:{color};"></div>
         </div>
-        '''
-        beaker_placeholder.markdown(beaker_html, unsafe_allow_html=True)
+        ''', unsafe_allow_html=True)
     else:
-        beaker_placeholder.markdown("<div style='width:100px;height:200px;border:2px solid #333;border-radius:5px;'></div>", unsafe_allow_html=True)
+        beaker.markdown("<div style='width:100px;height:200px;border:2px solid #333;border-radius:5px;'></div>", unsafe_allow_html=True)
 
 # --- Right Panel: Reaction Output ---
 with right:
     st.subheader("Reaction Output")
     if st.button("Mix Selected Chemicals"):
         if not st.session_state.selected_chemicals:
-            st.warning("Select at least one chemical!")
+            st.warning("Select chemicals first!")
         else:
             reaction = calculate_reaction(st.session_state.selected_chemicals)
-            output_placeholder = st.empty()
-            for i in range(5):
-                output_placeholder.info("Reaction in progress" + "."*i)
-                time.sleep(0.5)
-            output_placeholder.success(reaction)
+            st.session_state.log.append(f"{datetime.now().strftime('%H:%M:%S')} - Reaction: {reaction}")
     
+    st.markdown("### Log / Output")
+    for entry in st.session_state.log:
+        st.text(entry)
+
     st.markdown("### Safety Guidelines")
     st.info(
         "- Educational simulator only; do NOT try real reactions.\n"
         "- Hazardous reactions are blocked.\n"
-        "- Reaction times and colors are simulated visually."
+        "- Reactions, color changes, and volumes are simulated."
     )
