@@ -86,6 +86,7 @@ h2, h3 {
     overflow-y: scroll; /* Scrollable log */
     font-family: monospace;
     font-size: 14px;
+    white-space: pre-wrap; /* Ensure text wraps */
 }
 .stText {
     margin: 0;
@@ -98,7 +99,7 @@ h2, h3 {
 st.title("🧪 Virtual Chemistry Lab Simulator")
 st.markdown("---")
 
-# --- Chemical Data (kept as is) ---
+# --- Chemical Data ---
 CHEMICAL_DATA = {
     "Water (H2O)": {"mm": 18.02, "type": "Solvent", "conc": 55.5, "state": "L", "color": "#1E90FF"},
     "Sodium chloride (table salt)": {"mm": 58.44, "type": "Ionic Solid", "conc": 0, "state": "S", "color": "#F0F8FF"},
@@ -117,24 +118,26 @@ CHEMICAL_DATA = {
 
 SAFE_CHEMICALS = list(CHEMICAL_DATA.keys())
 
-# --- Session State (kept as is) ---
+# --- Session State ---
 if 'selected_chemicals' not in st.session_state:
     st.session_state.selected_chemicals = {}
 if 'log' not in st.session_state:
     st.session_state.log = []
 
-# --- Helper Functions (kept as is) ---
+# --- Helper Functions ---
 def standardize_amount(chemical, amount, unit):
     data = CHEMICAL_DATA[chemical]
-    if unit == 'ml':
-        volume_l = amount / 1000.0
-    else:
-        volume_l = amount
-    if data['state'] == 'S':
-        mass_g = amount * 2.0 # Placeholder for mass calculation
-        moles = mass_g / data['mm']
-    else:
+    
+    # Standardize liquid amount to Liters
+    if data['state'] == 'L':
+        volume_l = amount / 1000.0 if unit == 'ml' else amount
         moles = data['conc'] * volume_l
+    # Standardize solid amount to Grams (assuming input 'g' or arbitrary mass/volume ratio)
+    else: # data['state'] == 'S'
+        # For simplicity, assume solid input is in 'g' or an equivalent measure
+        mass_g = amount
+        moles = mass_g / data['mm']
+    
     return moles
 
 def calculate_reaction(selected):
@@ -144,29 +147,37 @@ def calculate_reaction(selected):
     carbonates = {c: chem for c, chem in selected.items() if 'Carbonate' in chem['type']}
     solids = {c: chem for c, chem in selected.items() if chem['state']=='S' and 'Acid' not in chem['type'] and 'Base' not in chem['type']}
 
+    # Calculate total reactive moles
     acid_moles = sum(c['moles'] for c in acids.values()) if acids else 0
     base_moles = sum(c['moles'] for c in bases.values()) if bases else 0
     
     reaction_happened = False
     
-    if acid_moles and base_moles:
+    # 1. Acid-Base Neutralization
+    if acid_moles > 0 and base_moles > 0:
         min_moles = min(acid_moles, base_moles)
         desc.append(f"**Neutralization!** Salt and water formed. Reacted: $\\approx {min_moles:.3f}$ mol")
         reaction_happened = True
 
+    # 2. Acid-Carbonate Reaction (CO2 gas)
     if acids and carbonates:
-        co2_moles = min(acid_moles, sum(c['moles'] for c in carbonates.values()))
+        total_carbonate_moles = sum(c['moles'] for c in carbonates.values())
+        co2_moles = min(acid_moles, total_carbonate_moles)
         if co2_moles > 0:
             desc.append(f"**Gas Evolution!** $\\text{CO}_2$ gas bubbled off: $\\approx {co2_moles:.3f}$ mol")
             reaction_happened = True
 
+    # 3. Dissolution (Solid in water)
     if 'Water (H2O)' in selected and solids:
-        for s in solids:
-            desc.append(f"**Dissolving!** {s} dissolved in water ($\\approx {selected[s]['moles']:.3f}$ mol)")
-            reaction_happened = True
+        for s_name, s_data in solids.items():
+            # Check if solid is soluble (for simplicity, we assume the selected solids are soluble enough)
+            if s_data['moles'] > 0:
+                desc.append(f"**Dissolving!** {s_name} dissolved in water ($\\approx {s_data['moles']:.3f}$ mol)")
+                reaction_happened = True
     
+    # 4. Specific Precipitation Example (Copper Sulfate + Base)
     if 'Copper sulfate (dilute)' in selected and bases:
-        desc.append("**Precipitation!** Blue copper hydroxide solid formed.")
+        desc.append("**Precipitation!** Blue copper hydroxide solid formed. (Simplified)")
         reaction_happened = True
 
     if not desc:
@@ -188,20 +199,17 @@ def mix_colors(colors):
     return f'#{r:02x}{g:02x}{b:02x}'
 
 
-# --- Sidebar: Chemical Selection (Cleaned up) ---
+# --- Sidebar: Chemical Selection ---
 with st.sidebar:
     st.header("🧪 Chemical Inventory")
     st.markdown("Use the controls below to **add chemicals** to your virtual beaker.")
     
-    # Use a dictionary to store temporary input values
-    temp_inputs = {}
-
     for chem in SAFE_CHEMICALS:
         expander = st.expander(f"**{chem}**", expanded=False)
+        data = CHEMICAL_DATA[chem]
         with expander:
             # Display chemical info
-            data = CHEMICAL_DATA[chem]
-            st.markdown(f"**Type:** {data['type']} | **MM:** {data['mm']} g/mol")
+            st.markdown(f"**Type:** {data['type']} | **MM:** {data['mm']} g/mol | **State:** {data['state']}")
             
             col_amt, col_unit = st.columns([2, 1])
             with col_amt:
@@ -214,14 +222,16 @@ with st.sidebar:
                     label_visibility="collapsed"
                 )
             with col_unit:
+                # Units depend on state: ml/l for Liquid, g for Solid
+                unit_options = ["ml", "l"] if data['state'] == 'L' else ["g"]
                 unit = st.selectbox(
                     "Unit", 
-                    ["ml", "l"] if data['state'] == 'L' else ["g"], 
+                    unit_options, 
                     key=f"{chem}_unit",
                     label_visibility="collapsed"
                 )
             
-            if st.button(f"Add **{chem}** to Beaker", key=f"{chem}_add", use_container_width=True):
+            if st.button(f"Add **{chem}**", key=f"{chem}_add", use_container_width=True):
                 moles = standardize_amount(chem, amt, unit)
                 st.session_state.selected_chemicals[chem] = {
                     'amount': amt, 
@@ -243,7 +253,6 @@ with st.sidebar:
 
 
 # --- Main Layout ---
-# Use a single, wider column for the main content
 col1, col2 = st.columns([1, 1])
 
 # --- Column 1: Beaker Simulation & Reaction Trigger ---
@@ -268,9 +277,8 @@ with col1:
         color = mix_colors([c['color'] for c in st.session_state.selected_chemicals.values()])
         
         if liquid_level_ml == 0 and total_solid_g > 0:
-            # If only solids, show a small pile at the bottom
-            liquid_height_percent = 5
-            color = mix_colors([c['color'] for c in st.session_state.selected_chemicals.values()])
+            # If only solids, show a small colored pile at the bottom (min 5% height)
+            liquid_height_percent = 5 
         elif liquid_level_ml > 0:
             # Ensure a minimum height if liquid is present
             liquid_height_percent = max(liquid_height_percent, 10)
@@ -315,16 +323,20 @@ with col1:
 
     st.subheader("Selected Chemicals")
     if st.session_state.selected_chemicals:
+        # Generate a list for the dataframe
+        display_data = []
+        for name, data in st.session_state.selected_chemicals.items():
+            amount_display = f"{data['amount']} {data['unit']}"
+            moles_display = f"{data['moles']:.3f}"
+            display_data.append({
+                "Chemical": name,
+                "Amount": amount_display,
+                "Type": data['type'],
+                "Moles (approx)": moles_display
+            })
+            
         st.dataframe(
-            [
-                {
-                    "Chemical": name,
-                    "Amount": f"{data['amount']} {data['unit']}",
-                    "Type": data['type'],
-                    "Moles (approx)": f"{data['moles']:.3f}"
-                }
-                for name, data in st.session_state.selected_chemicals.items()
-            ],
+            display_data,
             hide_index=True,
             use_container_width=True
         )
@@ -337,10 +349,10 @@ with col2:
     st.header("📊 Reaction Log & Safety")
     
     # Reaction Output (placed above the log)
-    st.subheader("Reaction Output")
+    st.subheader("Final Observation")
     if st.session_state.log and "Reaction: " in st.session_state.log[-1]:
         output = st.session_state.log[-1].split("Reaction: ")[1]
-        st.markdown(f"### **Final Observation:**")
+        st.markdown(f"### **Latest Result:**")
         st.markdown(output, unsafe_allow_html=True)
     else:
         st.markdown("Awaiting first reaction...")
@@ -350,13 +362,15 @@ with col2:
     # Log Box
     st.subheader("Activity Log")
     log_content = "\n".join(st.session_state.log)
-    st.markdown(f'<div class="log-box">{log_content.replace("\\n", "<br>")}</div>', unsafe_allow_html=True)
+    
+    # FIX APPLIED: Correctly replacing the newline character inside the f-string.
+    st.markdown(f'<div class="log-box">{log_content.replace("\n", "<br>")}</div>', unsafe_allow_html=True)
 
 
     st.markdown("---")
     st.subheader("Safety Guidelines")
     st.info(
-        "**⚠️ IMPORTANT:**\n"
+        "**⚠️ IMPORTANT:**\n\n"
         "- This is an **educational simulator only**. Do NOT attempt any of these reactions in a real-world setting.\n"
         "- The simulator is simplified. **Hazardous reactions are generally blocked**.\n"
         "- **Reactions, color changes, and volumes are approximations** for learning purposes."
